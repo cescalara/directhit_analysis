@@ -2,13 +2,11 @@ from ROOT import TFile
 import numpy as np
 from matplotlib import pyplot as plt
 
-from itertools import groupby
-from operator import itemgetter
-
 from ipywidgets import FloatProgress
 from IPython.display import display
 
 from contextlib import contextmanager
+from collections import namedtuple
 
 class DirectHitSearch():
     """
@@ -23,6 +21,7 @@ class DirectHitSearch():
 
         self.datafile = TFile() 
         self.n_gtu = 0
+        self.pkt_len = 0
 
         # thresholds
         self.counts_threshold = 6
@@ -31,19 +30,11 @@ class DirectHitSearch():
         self.max_sum = 10e3
         
         # initialisation
-        self.Event = namedtuple("Event", "gtu time duration shape")
-        self.Event.gtu = []
-        self.Event.duration = []
-        self.Event.shape = []
+        EventTuple = namedtuple("EventTuple", "gtu time duration shape")
+        self.Event = EventTuple(gtu = [], time = [], duration = [], shape = [])
 
-        self.FileSummary = namedtuple("FileSummary",
-                                      "n_events n_lines n_circles n_gtu pkt_len")
-        self.FileSummary.n_events = 0
-        self.FileSummary.n_lines = 0
-        self.FileSummary.n_circles = 0
-        self.FileSummary.n_gtu = 0
-        self.FileSummary.pkt_len = 0
-        
+        FileSummaryTuple = namedtuple("FileSummary", "n_gtu n_events n_lines n_circles pkt_len")
+
     def print_search_params(self):
         """
         print the current search parameters
@@ -55,17 +46,29 @@ class DirectHitSearch():
         print 'duration_threshold: ' + str(self.duration_threshold)
         print 'min_area: ' + str(self.min_area)
         print 'max_sum: ' + str(self.max_sum)
-
+        print 'pkt_len: ' + str(self.pkt_len)
+        
     @contextmanager
     def open(self, filename):
         """
         open a ROOT TFile for analysis
+        * checks if the file have the tevent TTree
+        * checks if the file is squeezed and sets self.pkt_len
+        * uses context management to avoid leaked file descriptors
         """
         self.datafile = TFile(filename)
+
+        # check if ROOT TTree written
         try:   
             self.n_gtu = self.datafile.tevent.GetEntries()
         except AttributeError:
             print 'No tevent TTree found in ', filename
+
+        # check if squeezed file
+        if "sqz-dis" in filename:
+            self.pkt_len = 64
+        else:
+            self.pkt_len = 128
             
         yield
         self.datafile.Close()
@@ -78,6 +81,8 @@ class DirectHitSearch():
         returns an event list and a label list
         """
         from scipy import ndimage
+        from itertools import groupby
+        from operator import itemgetter
 
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
@@ -116,7 +121,7 @@ class DirectHitSearch():
     def rm_long_events(self, detection_gtu):
         """
         remove events longer than self.duration_threshold from an event list
-        returns a filtered event list
+        returns a filtered event list to the Event tuple
         """
         # initialise
         self.Event.gtu = []
@@ -140,7 +145,9 @@ class DirectHitSearch():
         """
         from scipy import ndimage
         from skimage.measure import regionprops
-        
+        from itertools import groupby
+        from operator import itemgetter
+
         # initialise
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
@@ -217,4 +224,22 @@ class DirectHitSearch():
         cbar.set_label('# of counts', labelpad = 1)
         cbar.formatter.set_powerlimits((0, 0))
         
+    def create_FileSummary(self):
+        """
+        create the FileSummary tuple for this object
+        """
+        return self.FileSummary = FileSummaryTuple(
+            n_gtu = self.n_gtu, n_events = len(self.Event.gtu),
+            n_lines = len(self.Event.gtu[self.Event.gtu == 'linear']),
+            n_circles = len(self.Event.gtu[self.Event.gtu == 'circular']),
+            pkt_len = self.pkt_len )
+        
+
+    def write_Event_to_file (self, output_file):
+        """
+        write the Event and FileSummary tuples to an output file
+        """
+        
+        with open(output_file) as outfile:
+            
         
