@@ -31,10 +31,19 @@ class DirectHitSearch():
         self.max_sum = 10e3
         
         # initialisation
-        self.event_gtu = []
-        self.event_duration = []
-        self.event_shape = []
+        self.Event = namedtuple("Event", "gtu time duration shape")
+        self.Event.gtu = []
+        self.Event.duration = []
+        self.Event.shape = []
 
+        self.FileSummary = namedtuple("FileSummary",
+                                      "n_events n_lines n_circles n_gtu pkt_len")
+        self.FileSummary.n_events = 0
+        self.FileSummary.n_lines = 0
+        self.FileSummary.n_circles = 0
+        self.FileSummary.n_gtu = 0
+        self.FileSummary.pkt_len = 0
+        
     def print_search_params(self):
         """
         print the current search parameters
@@ -53,7 +62,11 @@ class DirectHitSearch():
         open a ROOT TFile for analysis
         """
         self.datafile = TFile(filename)
-        self.n_gtu = self.datafile.tevent.GetEntries()
+        try:   
+            self.n_gtu = self.datafile.tevent.GetEntries()
+        except AttributeError:
+            print 'No tevent TTree found in ', filename
+            
         yield
         self.datafile.Close()
 
@@ -106,8 +119,8 @@ class DirectHitSearch():
         returns a filtered event list
         """
         # initialise
-        self.event_gtu = []
-        self.event_duration = []
+        self.Event.gtu = []
+        self.Event.duration = []
         
         # find consecutive GTU runs in candidate events
         for key, group in groupby(enumerate(detection_gtu), lambda (i, x): i-x):
@@ -115,10 +128,10 @@ class DirectHitSearch():
             len_gtu = len(gtu_range)
 
             if len_gtu <= self.duration_threshold:
-                self.event_gtu.append(gtu_range[0])
-                self.event_duration.append(len_gtu)
+                self.Event.gtu.append(gtu_range[0])
+                self.Event.duration.append(len_gtu)
 
-        return self.event_gtu, self.event_duration
+        return self.Event.gtu, self.Event.duration
 
     def classify_shape(self):
         """
@@ -133,8 +146,8 @@ class DirectHitSearch():
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
         self.datafile.tevent.SetBranchAddress("photon_count_data", pcd)
 
-        self.event_shape = []
-        for e in self.event_gtu:
+        self.Event.shape = []
+        for e in self.Event.gtu:
 
             self.datafile.tevent.GetEntry(e)
             focal_surface[:][:] = pcd[0][0][:][:]
@@ -155,11 +168,11 @@ class DirectHitSearch():
 
                 # if object is eccentric and long, classify as linear
                 if ecc > 0.7 and length > 10:
-                    self.event_shape.append('linear')
+                    self.Event.shape.append('linear')
                 else:
-                    self.event_shape.append('circular')
+                    self.Event.shape.append('circular')
                     
-        return self.event_shape
+        return self.Event.shape
     
     def plot_focal_surface (self, gtu_num):
         """
