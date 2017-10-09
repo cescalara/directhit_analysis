@@ -52,7 +52,7 @@ class DirectHitSearch():
         """
         print 'Search paramters:'
         print '-----------------'
-        print 'file:' + self.datafile.GetName()
+        print 'file: ' + self.datafile.GetName()
         print 'counts_threshold: ' + str(self.counts_threshold)
         print 'duration_threshold: ' + str(self.duration_threshold)
         print 'min_area: ' + str(self.min_area)
