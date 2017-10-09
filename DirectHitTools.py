@@ -30,11 +30,22 @@ class DirectHitSearch():
         self.max_sum = 10e3
         
         # initialisation
-        EventTuple = namedtuple("EventTuple", "gtu time duration shape")
-        self.Event = EventTuple(gtu = [], time = [], duration = [], shape = [])
+        self.Events = namedtuple("Events",
+                                "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
+        self.Events.filename = ""
+        self.Events.gtu = []
+        self.Events.time = []
+        self.Events.duration = []
+        self.Events.shape = []
+        self.Events.n_gtu = 0
+        self.Events.n_lines = 0
+        self.Events.n_circles = 0
+        self.Events.pkt_len = 128
 
-        FileSummaryTuple = namedtuple("FileSummary", "n_gtu n_events n_lines n_circles pkt_len")
-
+        # settings
+        self.set_progress = False
+        self.set_analysis = True
+        
     def print_search_params(self):
         """
         print the current search parameters
@@ -57,21 +68,27 @@ class DirectHitSearch():
         * uses context management to avoid leaked file descriptors
         """
         self.datafile = TFile(filename)
-
+        
         # check if ROOT TTree written
         try:   
             self.n_gtu = self.datafile.tevent.GetEntries()
         except AttributeError:
             print 'No tevent TTree found in ', filename
-
+            self.set_analysis = False
+        
+        # set Events filename 
+        self.Events.filename = filename
+        
         # check if squeezed file
         if "sqz-dis" in filename:
             self.pkt_len = 64
         else:
             self.pkt_len = 128
-            
+
+        # context     
         yield
         self.datafile.Close()
+        
 
     def find_candidates(self):
         """
@@ -89,8 +106,9 @@ class DirectHitSearch():
         self.datafile.tevent.SetBranchAddress("photon_count_data", pcd)
 
         # display progress
-        prog = FloatProgress(min = 0, max = self.n_gtu)
-        display(prog)
+        if self.set_progress == True:
+            prog = FloatProgress(min = 0, max = self.n_gtu)
+            display(prog)
         
         detection_gtu = []
         detection_label = []
@@ -113,7 +131,8 @@ class DirectHitSearch():
                     biggest_label = size[1:].argmax() + 1
                     detection_label.append(labels == biggest_label)
 
-            prog.value += 1
+            if self.set_progress == True:
+                prog.value += 1
 
         return detection_gtu, detection_label
 
@@ -121,11 +140,14 @@ class DirectHitSearch():
     def rm_long_events(self, detection_gtu):
         """
         remove events longer than self.duration_threshold from an event list
-        returns a filtered event list to the Event tuple
+        returns a filtered event list to the Events tuple
         """
+        from itertools import groupby
+        from operator import itemgetter
+
         # initialise
-        self.Event.gtu = []
-        self.Event.duration = []
+        self.Events.gtu = []
+        self.Events.duration = []
         
         # find consecutive GTU runs in candidate events
         for key, group in groupby(enumerate(detection_gtu), lambda (i, x): i-x):
@@ -133,10 +155,10 @@ class DirectHitSearch():
             len_gtu = len(gtu_range)
 
             if len_gtu <= self.duration_threshold:
-                self.Event.gtu.append(gtu_range[0])
-                self.Event.duration.append(len_gtu)
+                self.Events.gtu.append(gtu_range[0])
+                self.Events.duration.append(len_gtu)
 
-        return self.Event.gtu, self.Event.duration
+        return self.Events.gtu, self.Events.duration
 
     def classify_shape(self):
         """
@@ -153,8 +175,8 @@ class DirectHitSearch():
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
         self.datafile.tevent.SetBranchAddress("photon_count_data", pcd)
 
-        self.Event.shape = []
-        for e in self.Event.gtu:
+        self.Events.shape = []
+        for e in self.Events.gtu:
 
             self.datafile.tevent.GetEntry(e)
             focal_surface[:][:] = pcd[0][0][:][:]
@@ -175,11 +197,11 @@ class DirectHitSearch():
 
                 # if object is eccentric and long, classify as linear
                 if ecc > 0.7 and length > 10:
-                    self.Event.shape.append('linear')
+                    self.Events.shape.append('linear')
                 else:
-                    self.Event.shape.append('circular')
+                    self.Events.shape.append('circular')
                     
-        return self.Event.shape
+        return self.Events.shape
     
     def plot_focal_surface (self, gtu_num):
         """
@@ -223,23 +245,16 @@ class DirectHitSearch():
         cbar = fig.colorbar(p, cax=cbar_ax)
         cbar.set_label('# of counts', labelpad = 1)
         cbar.formatter.set_powerlimits((0, 0))
-        
-    def create_FileSummary(self):
-        """
-        create the FileSummary tuple for this object
-        """
-        return self.FileSummary = FileSummaryTuple(
-            n_gtu = self.n_gtu, n_events = len(self.Event.gtu),
-            n_lines = len(self.Event.gtu[self.Event.gtu == 'linear']),
-            n_circles = len(self.Event.gtu[self.Event.gtu == 'circular']),
-            pkt_len = self.pkt_len )
-        
 
-    def write_Event_to_file (self, output_file):
-        """
-        write the Event and FileSummary tuples to an output file
-        """
         
-        with open(output_file) as outfile:
-            
+    def add_file_summary(self):
+        """
+        create file summary and add to the Events tuple
+        """
+        self.Events.n_gtu = self.n_gtu
+        self.Events.n_events = len(self.Events.gtu)
+        self.Events.n_lines = self.Events.shape.count('linear')
+        self.Events.n_circles = self.Events.shape.count('circular')
+        self.Events.pkt_len = self.pkt_len
+
         
