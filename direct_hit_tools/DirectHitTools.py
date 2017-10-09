@@ -104,7 +104,7 @@ class DirectHitSearch():
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
         self.datafile.tevent.SetBranchAddress("photon_count_data", pcd)
-
+        
         # display progress
         if self.set_progress == True:
             prog = FloatProgress(min = 0, max = self.n_gtu)
@@ -115,7 +115,7 @@ class DirectHitSearch():
         for k in range(self.n_gtu):
             self.datafile.tevent.GetEntry(k)
             focal_surface[:][:] = pcd[0][0][:][:]
-       
+            
             # find pixels above threshold
             blobs = focal_surface > self.counts_threshold 
             if blobs.any() == True:
@@ -148,6 +148,9 @@ class DirectHitSearch():
         # initialise
         self.Events.gtu = []
         self.Events.duration = []
+        time = np.zeros((1,1))
+        self.datafile.tevent.SetBranchAddress("gtu_time", time)
+        
         
         # find consecutive GTU runs in candidate events
         for key, group in groupby(enumerate(detection_gtu), lambda (i, x): i-x):
@@ -157,7 +160,9 @@ class DirectHitSearch():
             if len_gtu <= self.duration_threshold:
                 self.Events.gtu.append(gtu_range[0])
                 self.Events.duration.append(len_gtu)
-
+                self.datafile.tevent.GetEntry(gtu_range[0])
+                self.Events.time.append(time)
+                
         return self.Events.gtu, self.Events.duration
 
     def classify_shape(self):
