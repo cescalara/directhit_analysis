@@ -8,6 +8,8 @@ from operator import itemgetter
 from ipywidgets import FloatProgress
 from IPython.display import display
 
+from contextlib import contextmanager
+
 class DirectHitSearch():
     """
     Implement a direct hit search on EUSO data
@@ -44,20 +46,16 @@ class DirectHitSearch():
         print 'duration_threshold: ' + str(self.duration_threshold)
         print 'min_area: ' + str(self.min_area)
         print 'max_sum: ' + str(self.max_sum)
-        
+
+    @contextmanager
     def open(self, filename):
         """
         open a ROOT TFile for analysis
         """
         self.datafile = TFile(filename)
         self.n_gtu = self.datafile.tevent.GetEntries()
-
-    def close(self):
-        """
-        close the current datafile
-        """
+        yield
         self.datafile.Close()
-
 
     def find_candidates(self):
         """
