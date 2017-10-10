@@ -35,7 +35,8 @@ class DirectHitSearch():
         
         # initialisation
         #self.Events = EventsTuple([], [], [], [], [], [], [], [], [], [])
-        """
+        self.Events = namedtuple("EventsTuple",
+                                 "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
         self.Events.filename = ""
         self.Events.gtu = []
         self.Events.time = []
@@ -45,8 +46,7 @@ class DirectHitSearch():
         self.Events.n_lines = 0
         self.Events.n_circles = 0
         self.Events.pkt_len = 128
-        """
-        
+
         # settings
         self.set_progress = False
         self.set_analysis = True
@@ -150,11 +150,9 @@ class DirectHitSearch():
         from operator import itemgetter
 
         # initialise
-        #self.Events.gtu = []
-        #self.Events.duration = []
-        event_gtu = []
-        event_duration = []
-        event_time = []
+        self.Events.gtu = []
+        self.Events.duration = []
+        self.Events.time = []
         time = np.zeros((1,1))
         datafile = TFile(self.filename)
         datafile.tevent.SetBranchAddress("gtu_time", time)
@@ -166,15 +164,15 @@ class DirectHitSearch():
             len_gtu = len(gtu_range)
 
             if len_gtu <= self.duration_threshold:
-                event_gtu.append(gtu_range[0])
-                event_duration.append(len_gtu)
+                self.Events.gtu.append(gtu_range[0])
+                self.Events.duration.append(len_gtu)
                 datafile.tevent.GetEntry(gtu_range[0])
-                event_time.append(time)
+                self.Events.time.append(time)
 
         datafile.Close()
-        return event_gtu, event_duration, event_time
-                
-    def classify_shape(self, event_gtu):
+
+        
+    def classify_shape(self):
         """
         identify the shape of events in an event list
         return a list of the event shapes
@@ -190,8 +188,8 @@ class DirectHitSearch():
         datafile = TFile(self.filename)
         datafile.tevent.SetBranchAddress("photon_count_data", pcd)
 
-        event_shape = []
-        for e in event_gtu:
+        self.Events.shape = []
+        for e in self.Events.gtu:
 
             datafile.tevent.GetEntry(e)
             focal_surface[:][:] = pcd[0][0][:][:]
@@ -212,12 +210,12 @@ class DirectHitSearch():
 
                 # if object is eccentric and long, classify as linear
                 if ecc > 0.7 and length > 10:
-                    event_shape.append('linear')
+                    self.Events.shape.append('linear')
                 else:
-                    event_shape.append('circular')
+                    self.Events.shape.append('circular')
 
         datafile.Close()
-        return event_shape
+
                     
     def plot_focal_surface (self, gtu_num):
         """
@@ -266,7 +264,7 @@ class DirectHitSearch():
         datafile.Close()
         
         
-    #def add_file_summary(self):
+    def add_file_summary(self):
         """
         create file summary and add to the Events tuple
         """
@@ -277,11 +275,11 @@ class DirectHitSearch():
         self.Events.n_circles.append(self.Events.shape.count('circular'))
         self.Events.pkt_len.append(self.pkt_len)
         """
-        """
+        
         self.Events.n_gtu = self.n_gtu
         self.Events.n_events = len(self.Events.gtu)
         self.Events.n_lines = self.Events.shape.count('linear')
         self.Events.n_circles = self.Events.shape.count('circular')
         self.Events.pkt_len = self.pkt_len
-        """
+        
         
