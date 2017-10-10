@@ -11,7 +11,6 @@ from collections import namedtuple
 #EventsTuple = namedtuple("EventsTuple",
 #                         "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
        
-
 class DirectHitSearch():
     """
     Implement a direct hit search on EUSO data
@@ -23,7 +22,6 @@ class DirectHitSearch():
         self._rows = 48
         self._cols = 48
 
-        self.datafile = TFile() 
         self.n_gtu = 0
         self.pkt_len = 0
 
@@ -52,15 +50,7 @@ class DirectHitSearch():
         # settings
         self.set_progress = False
         self.set_analysis = True
-        
-    """
-    def __enter__(self):
-        return self
-
-    def __exit__(self,  exc_type, exc_value, traceback):
-        self.Events = None
-    """    
-        
+              
     def print_search_params(self):
         """
         print the current search parameters
@@ -74,42 +64,36 @@ class DirectHitSearch():
         print ('max_sum: ' + str(self.max_sum))
         print ('pkt_len: ' + str(self.pkt_len))
 
-    """
     @contextmanager
     def open(self, filename):
-        
-        #open a ROOT TFile for analysis
-        #* checks if the file have the tevent TTree
-        #* checks if the file is squeezed and sets self.pkt_len
-        #* uses context management to avoid leaked file descriptors
-        
+        """
+        open a ROOT TFile for analysis
+        * checks if the file have the tevent TTree
+        * checks if the file is squeezed and sets self.pkt_len
+        """
 
-        self.datafile = TFile(filename)
+        self.filename = filename
+        datafile = TFile(self.filename)
         
         # check if ROOT TTree written
         try:   
-            self.n_gtu = self.datafile.tevent.GetEntries()
+            self.n_gtu = datafile.tevent.GetEntries()
         except AttributeError:
-            print ('No tevent TTree found in ', filename)
+            print ('No tevent TTree found in ', self.filename)
             self.set_analysis = False
-        
-        # set Events filename 
-        #self.Events.filename.append(filename)
-        
+
+        datafile.Close()
+
         # check if squeezed file
-        if "sqz-dis" in filename:
+        if "sqz-dis" in self.filename:
             self.pkt_len = 64
         else:
             self.pkt_len = 128
 
         # context     
         yield
-        self.datafile.Close()
-    """
-
-    def open(self, filename):
-        self.filename = filename
-            
+        self.filename = ""
+               
     def find_candidates(self):
         """
         Search through all gtu for events satisfying the following criteria:
@@ -122,8 +106,7 @@ class DirectHitSearch():
         from operator import itemgetter
 
         datafile = TFile(self.filename)
-        self.n_gtu = datafile.tevent.GetEntries()
-        
+    
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
         datafile.tevent.SetBranchAddress("photon_count_data", pcd)
