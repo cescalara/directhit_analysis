@@ -14,6 +14,7 @@ class DirectHitSearch():
     Implement a direct hit search on EUSO data
     Input is the name of standard ROOT TFile
     """
+
     def __init__(self):
 
         # constants
@@ -47,7 +48,15 @@ class DirectHitSearch():
         # settings
         self.set_progress = False
         self.set_analysis = True
-              
+
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.Events = None
+        
+        
     def print_search_params(self):
         """
         print the current search parameters
@@ -71,12 +80,13 @@ class DirectHitSearch():
 
         self.filename = filename
         datafile = TFile(self.filename)
+        self.Events.filename = self.filename
         
         # check if ROOT TTree written
         try:   
             self.n_gtu = datafile.tevent.GetEntries()
         except AttributeError:
-            print ('No tevent TTree found in ', self.filename)
+            print ('No tevent TTree found in ' + self.filename)
             self.set_analysis = False
 
         datafile.Close()
@@ -134,7 +144,7 @@ class DirectHitSearch():
         from operator import itemgetter
 
         datafile = TFile(self.filename)
-    
+        
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
         datafile.tevent.SetBranchAddress("photon_count_data", pcd)
@@ -164,6 +174,7 @@ class DirectHitSearch():
                 if np.max(size[1]) > self.min_area and np.sum(focal_surface) < self.max_sum:
                 # store the event and its label
                     detection_gtu.append(k)
+                    
 
         datafile.Close()
         DirectHitSearch._rm_long_events(self, detection_gtu)
