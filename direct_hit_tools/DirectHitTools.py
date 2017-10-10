@@ -8,22 +8,19 @@ from IPython.display import display
 from contextlib import contextmanager
 from collections import namedtuple
 
-#EventsTuple = namedtuple("EventsTuple",
-#                         "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
-       
 
 class DirectHitSearch():
     """
     Implement a direct hit search on EUSO data
     Input is the name of standard ROOT TFile
     """
+
     def __init__(self):
 
         # constants
         self._rows = 48
         self._cols = 48
 
-        self.datafile = TFile() 
         self.n_gtu = 0
         self.pkt_len = 0
 
@@ -36,8 +33,8 @@ class DirectHitSearch():
         self.filename = ""
         
         # initialisation
-        #self.Events = EventsTuple([], [], [], [], [], [], [], [], [], [])
-        """
+        self.Events = namedtuple("EventsTuple",
+                                 "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
         self.Events.filename = ""
         self.Events.gtu = []
         self.Events.time = []
@@ -47,19 +44,18 @@ class DirectHitSearch():
         self.Events.n_lines = 0
         self.Events.n_circles = 0
         self.Events.pkt_len = 128
-        """
-        
+
         # settings
         self.set_progress = False
         self.set_analysis = True
-        
-    """
+
+
     def __enter__(self):
         return self
 
-    def __exit__(self,  exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.Events = None
-    """    
+        
         
     def print_search_params(self):
         """
@@ -67,62 +63,87 @@ class DirectHitSearch():
         """
         print ('Search paramters:')
         print ('-----------------')
-        print ('file:' + self.filename)
+        print ('file: ' + self.filename)
         print ('counts_threshold: ' + str(self.counts_threshold))
         print ('duration_threshold: ' + str(self.duration_threshold))
         print ('min_area: ' + str(self.min_area))
         print ('max_sum: ' + str(self.max_sum))
         print ('pkt_len: ' + str(self.pkt_len))
 
-    """
     @contextmanager
     def open(self, filename):
-        
-        #open a ROOT TFile for analysis
-        #* checks if the file have the tevent TTree
-        #* checks if the file is squeezed and sets self.pkt_len
-        #* uses context management to avoid leaked file descriptors
-        
+        """
+        open a ROOT TFile for analysis
+        * checks if the file have the tevent TTree
+        * checks if the file is squeezed and sets self.pkt_len
+        """
 
-        self.datafile = TFile(filename)
+        self.filename = filename
+        datafile = TFile(self.filename)
+        self.Events.filename = self.filename
         
         # check if ROOT TTree written
         try:   
-            self.n_gtu = self.datafile.tevent.GetEntries()
+            self.n_gtu = datafile.tevent.GetEntries()
         except AttributeError:
-            print ('No tevent TTree found in ', filename)
+            print ('No tevent TTree found in ' + self.filename)
             self.set_analysis = False
-        
-        # set Events filename 
-        #self.Events.filename.append(filename)
-        
+
+        datafile.Close()
+
         # check if squeezed file
-        if "sqz-dis" in filename:
+        if "sqz-dis" in self.filename:
             self.pkt_len = 64
         else:
             self.pkt_len = 128
 
         # context     
         yield
-        self.datafile.Close()
-    """
+        self.filename = ""
+               
 
-    def open(self, filename):
-        self.filename = filename
-            
+    def _rm_long_events(self, detection_gtu):
+        """
+        remove events longer than self.duration_threshold from an event list
+        returns a filtered event list to the Events tuple
+        """
+        from itertools import groupby
+        from operator import itemgetter
+
+        # initialise
+        self.Events.gtu = []
+        self.Events.duration = []
+        self.Events.time = []
+        time = np.zeros((1,1))
+        datafile = TFile(self.filename)
+        datafile.tevent.SetBranchAddress("gtu_time", time)
+        
+        
+        # find consecutive GTU runs in candidate events
+        for key, group in groupby(enumerate(detection_gtu), lambda (i, x): i-x):
+            gtu_range = map(itemgetter(1), group)
+            len_gtu = len(gtu_range)
+
+            if len_gtu <= self.duration_threshold:
+                self.Events.gtu.append(gtu_range[0])
+                self.Events.duration.append(len_gtu)
+                datafile.tevent.GetEntry(gtu_range[0])
+                self.Events.time.append(time)
+
+        datafile.Close()
+
+        
     def find_candidates(self):
         """
         Search through all gtu for events satisfying the following criteria:
         - signal is above threshold in at least 2 adjacent pixels
-
-        returns an event list and a label list
+        - signal is above threshold for 2 GTUs or less
         """
         from scipy import ndimage
         from itertools import groupby
         from operator import itemgetter
 
         datafile = TFile(self.filename)
-        self.n_gtu = datafile.tevent.GetEntries()
         
         pcd = np.zeros((1, 1, self._rows, self._cols), dtype = 'B')
         focal_surface = np.zeros((self._rows, self._cols), dtype = 'B')
@@ -153,45 +174,13 @@ class DirectHitSearch():
                 if np.max(size[1]) > self.min_area and np.sum(focal_surface) < self.max_sum:
                 # store the event and its label
                     detection_gtu.append(k)
+                    
 
         datafile.Close()
-        return detection_gtu
+        DirectHitSearch._rm_long_events(self, detection_gtu)
 
-    
-    def rm_long_events(self, detection_gtu):
-        """
-        remove events longer than self.duration_threshold from an event list
-        returns a filtered event list to the Events tuple
-        """
-        from itertools import groupby
-        from operator import itemgetter
-
-        # initialise
-        #self.Events.gtu = []
-        #self.Events.duration = []
-        event_gtu = []
-        event_duration = []
-        event_time = []
-        time = np.zeros((1,1))
-        datafile = TFile(self.filename)
-        datafile.tevent.SetBranchAddress("gtu_time", time)
         
-        
-        # find consecutive GTU runs in candidate events
-        for key, group in groupby(enumerate(detection_gtu), lambda (i, x): i-x):
-            gtu_range = map(itemgetter(1), group)
-            len_gtu = len(gtu_range)
-
-            if len_gtu <= self.duration_threshold:
-                event_gtu.append(gtu_range[0])
-                event_duration.append(len_gtu)
-                datafile.tevent.GetEntry(gtu_range[0])
-                event_time.append(time)
-
-        datafile.Close()
-        return event_gtu, event_duration, event_time
-                
-    def classify_shape(self, event_gtu):
+    def classify_shape(self):
         """
         identify the shape of events in an event list
         return a list of the event shapes
@@ -207,8 +196,8 @@ class DirectHitSearch():
         datafile = TFile(self.filename)
         datafile.tevent.SetBranchAddress("photon_count_data", pcd)
 
-        event_shape = []
-        for e in event_gtu:
+        self.Events.shape = []
+        for e in self.Events.gtu:
 
             datafile.tevent.GetEntry(e)
             focal_surface[:][:] = pcd[0][0][:][:]
@@ -229,12 +218,12 @@ class DirectHitSearch():
 
                 # if object is eccentric and long, classify as linear
                 if ecc > 0.7 and length > 10:
-                    event_shape.append('linear')
+                    self.Events.shape.append('linear')
                 else:
-                    event_shape.append('circular')
+                    self.Events.shape.append('circular')
 
         datafile.Close()
-        return event_shape
+
                     
     def plot_focal_surface (self, gtu_num):
         """
@@ -283,22 +272,14 @@ class DirectHitSearch():
         datafile.Close()
         
         
-    #def add_file_summary(self):
+    def add_file_summary(self):
         """
         create file summary and add to the Events tuple
-        """
-        """
-        self.Events.n_gtu.append(self.n_gtu)
-        self.Events.n_events.append(len(self.Events.gtu))
-        self.Events.n_lines.append(self.Events.shape.count('linear'))
-        self.Events.n_circles.append(self.Events.shape.count('circular'))
-        self.Events.pkt_len.append(self.pkt_len)
-        """
         """
         self.Events.n_gtu = self.n_gtu
         self.Events.n_events = len(self.Events.gtu)
         self.Events.n_lines = self.Events.shape.count('linear')
         self.Events.n_circles = self.Events.shape.count('circular')
         self.Events.pkt_len = self.pkt_len
-        """
+        
         
