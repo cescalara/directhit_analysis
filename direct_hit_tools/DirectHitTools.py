@@ -7,7 +7,10 @@ from IPython.display import display
 
 from contextlib import contextmanager
 from collections import namedtuple
+from recordclass import recordclass 
 
+EventsTuple = recordclass("EventsTuple",
+                         "filename gtu time duration shape n_gtu n_events n_lines n_circles pkt_len")
 
 class DirectHitSearch():
     """
@@ -33,18 +36,8 @@ class DirectHitSearch():
         self.filename = ""
         
         # initialisation
-        self.Events = namedtuple("EventsTuple",
-                                 "filename gtu time duration shape n_gtu n_event n_lines n_circles pkt_len")
-        self.Events.filename = ""
-        self.Events.gtu = []
-        self.Events.time = []
-        self.Events.duration = []
-        self.Events.shape = []
-        self.Events.n_gtu = 0
-        self.Events.n_lines = 0
-        self.Events.n_circles = 0
-        self.Events.pkt_len = 128
-
+        self.Events = EventsTuple("", [], [], [], [], 0, 0, 0, 0, 128)
+        
         # settings
         self.set_progress = False
         self.set_analysis = True
@@ -92,7 +85,7 @@ class DirectHitSearch():
         datafile.Close()
 
         # check if squeezed file
-        if "sqz-dis" in self.filename:
+        if "sqz" in self.filename:
             self.pkt_len = 64
         else:
             self.pkt_len = 128
@@ -239,7 +232,7 @@ class DirectHitSearch():
         datafile.tevent.GetEntry(gtu_num)
         focal_surface[:][:] = pcd[0][0][:][:]
        
-        fig = plt.figure()
+        fig = plt.figure(figsize = (6, 6))
         ax = fig.add_subplot(111)
         p = plt.imshow(focal_surface, axes=ax, interpolation='nearest')
         plt.xlabel('pixel X')
@@ -264,7 +257,7 @@ class DirectHitSearch():
 
         # add colourbar
         fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.8, 0.1, 0.05, 0.8])
+        cbar_ax = fig.add_axes([0.9, 0.1, 0.05, 0.8])
         cbar = fig.colorbar(p, cax=cbar_ax)
         cbar.set_label('# of counts', labelpad = 1)
         cbar.formatter.set_powerlimits((0, 0))
